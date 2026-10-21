@@ -1,12 +1,31 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { BrowserCodeReader } from '@zxing/browser'
-import { Code128Reader } from '@zxing/library'
+import { BinaryBitmap, Code128Reader, HybridBinarizer, RGBLuminanceSource } from '@zxing/library'
 import { Camera, Heart, LockKeyhole, Music, Pause, Play, Volume2, VolumeX, Sparkles, ChevronDown } from 'lucide-react'
 
 const BARCODE_KEY = '061223'
 const NATIVE_BARCODE_FORMAT = 'code_128'
+
+const describeScannerError = (cause: unknown) => {
+  if (cause instanceof Error) return cause.message || cause.name
+  if (typeof cause === 'string') return cause
+  if (cause === undefined) return 'penyebab tidak disediakan'
+  if (cause === null) return 'penyebab bernilai null'
+  return Object.prototype.toString.call(cause)
+}
+
+const decodeBarcodeCanvas = (reader: Code128Reader, context: CanvasRenderingContext2D, width: number, height: number) => {
+  const pixels = context.getImageData(0, 0, width, height).data
+  const luminance = new Uint8ClampedArray(width * height)
+  for (let pixel = 0; pixel < luminance.length; pixel += 1) {
+    const offset = pixel * 4
+    luminance[pixel] = (306 * pixels[offset] + 601 * pixels[offset + 1] + 117 * pixels[offset + 2] + 0x200) >> 10
+  }
+
+  const source = new RGBLuminanceSource(luminance, width, height)
+  return reader.decode(new BinaryBitmap(new HybridBinarizer(source))).getText()
+}
 
 type DetectedBarcode = { rawValue: string }
 type NativeBarcodeDetector = {
@@ -45,7 +64,7 @@ export default function Page() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const fullFrameCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const readerRef = useRef<BrowserCodeReader | null>(null)
+  const readerRef = useRef<Code128Reader | null>(null)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const scannerRunRef = useRef(0)
   const scanTimerRef = useRef<number | null>(null)
@@ -80,7 +99,7 @@ export default function Page() {
   useEffect(() => {
     if (!opened) return
 
-    const reader = new BrowserCodeReader(new Code128Reader())
+    const reader = new Code128Reader()
     readerRef.current = reader
     setBarcodeReady(true)
     setError('')
@@ -204,6 +223,7 @@ export default function Page() {
       let lastZXingAttempt = 0
       let lastNoBarcodeMessage = 0
       let lastWrongValue: string | undefined
+      let lastScannerError = ''
       const scanFrame = async () => {
         if (scannerRunRef.current !== scannerRun) return
 
@@ -243,18 +263,21 @@ export default function Page() {
             context.imageSmoothingEnabled = true
             context.imageSmoothingQuality = 'high'
             context.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height)
-            let scanFailed = false
             try {
-              detectedValue = readerRef.current?.decodeFromCanvas(canvas).getText()
+              const reader = readerRef.current
+              if (reader) detectedValue = decodeBarcodeCanvas(reader, context, canvas.width, canvas.height)
             } catch (cause: unknown) {
               const exceptionName = cause instanceof Error ? cause.name : ''
               if (!['NotFoundException', 'ChecksumException', 'FormatException'].includes(exceptionName)) {
-                setError(`Pemindai barcode mengalami kendala: ${cause instanceof Error ? cause.message : String(cause)}`)
-                scanFailed = true
+                const message = describeScannerError(cause)
+                if (message !== lastScannerError) {
+                  lastScannerError = message
+                  setError(`Pemindai barcode mengalami kendala: ${message}. Pemindaian akan terus mencoba.`)
+                }
               }
             }
 
-            if (!detectedValue && !scanFailed) {
+            if (!detectedValue) {
               fullFrameCanvas.width = video.videoWidth
               fullFrameCanvas.height = video.videoHeight
               const fullFrameContext = fullFrameCanvas.getContext('2d', { willReadFrequently: true })
@@ -269,11 +292,16 @@ export default function Page() {
               }
               fullFrameContext.drawImage(video, 0, 0, fullFrameCanvas.width, fullFrameCanvas.height)
               try {
-                detectedValue = readerRef.current?.decodeFromCanvas(fullFrameCanvas).getText()
+                const reader = readerRef.current
+                if (reader) detectedValue = decodeBarcodeCanvas(reader, fullFrameContext, fullFrameCanvas.width, fullFrameCanvas.height)
               } catch (cause: unknown) {
                 const exceptionName = cause instanceof Error ? cause.name : ''
                 if (!['NotFoundException', 'ChecksumException', 'FormatException'].includes(exceptionName)) {
-                  setError(`Pemindai barcode mengalami kendala: ${cause instanceof Error ? cause.message : String(cause)}`)
+                  const message = describeScannerError(cause)
+                  if (message !== lastScannerError) {
+                    lastScannerError = message
+                    setError(`Pemindai barcode mengalami kendala: ${message}. Pemindaian akan terus mencoba.`)
+                  }
                 }
               }
             }
@@ -292,6 +320,7 @@ export default function Page() {
               setUnlocked(true)
               return
             }
+            lastScannerError = ''
             if (detectedValue !== lastWrongValue) {
               lastWrongValue = detectedValue
               setError(`Barcode terbaca: “${detectedValue}”, tetapi kuncinya harus 061223.`)
@@ -300,7 +329,11 @@ export default function Page() {
           } else if (!detectedValue && now - lastNoBarcodeMessage >= 5000) {
             lastWrongValue = undefined
             lastNoBarcodeMessage = now
-            setError('')
+            if (lastScannerError) {
+              setError(`Pemindai barcode mengalami kendala: ${lastScannerError}. Pemindaian akan terus mencoba.`)
+            } else {
+              setError('')
+            }
             setScanStatus(`Belum terdeteksi (${cameraLabel}, ${cameraResolution}). Tampilkan barcode di HP lain/cetakan, isi kotak, dan pastikan fokus.`)
           }
         }
