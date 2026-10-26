@@ -433,12 +433,12 @@ export default function Page() {
         <section className="celebration" aria-label="Perayaan anniversary">
           <header className="site-header">
             <div className="brand"> M & S <span className="brand-divider" /> <span>03</span></div>
-            <p>OUR LOVE STORY</p>
+            <p>STORY OF MY LOVE</p>
             <button className="audio-control" onClick={toggleMusic} aria-label={playing ? 'Jeda musik' : 'Putar musik'}>{playing ? <Pause size={14} /> : <Play size={14} />} <span>{playing ? 'PLAYING' : 'PLAY MUSIC'}</span></button>
           </header>
 
           <div className="hero-content reveal-on-scroll reveal-hero">
-            <p className="eyebrow hero-eyebrow"><Sparkles size={13} /> 06 DECEMBER 2026</p>
+            <p className="eyebrow hero-eyebrow"> 06 DECEMBER 2026</p>
             <h1>Happy 3rd<br /><em>Anniversary.</em></h1>
             <p className="hero-note">Tiga tahun, ribuan cerita,<br />dan masih kamu — selalu kamu.</p>
             <div className="hero-moon moon" aria-hidden="true"><div className="moon-cutout" /></div>
@@ -462,7 +462,7 @@ export default function Page() {
           <div className="content-shell">
             <section className="favorite-music reveal-on-scroll" aria-labelledby="favorite-music-title">
               <div className="favorite-music-copy">
-                <p className="section-kicker"><Music size={13} /> OUR FAVORITE SOUNDTRACK</p>
+                <p className="section-kicker"> OUR FAVORITE SOUNDTRACK</p>
                 <h2 id="favorite-music-title">Music for<br /><em>our little world.</em></h2>
                 <p>Karena ada beberapa lagu yang selalu berhasil membawaku kembali ke kamu.</p>
               </div>
