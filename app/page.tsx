@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { BinaryBitmap, Code128Reader, HybridBinarizer, RGBLuminanceSource } from '@zxing/library'
 import { Camera, Heart, LockKeyhole, Music, Pause, Play, Volume2, VolumeX, Sparkles, ChevronDown } from 'lucide-react'
 
 const BARCODE_KEY = '061223'
+const ACCESS_PIN = '061223'
 const NATIVE_BARCODE_FORMAT = 'code_128'
 
 const describeScannerError = (cause: unknown) => {
@@ -24,7 +25,14 @@ const decodeBarcodeCanvas = (reader: Code128Reader, context: CanvasRenderingCont
   }
 
   const source = new RGBLuminanceSource(luminance, width, height)
-  return reader.decode(new BinaryBitmap(new HybridBinarizer(source))).getText()
+  try {
+    return reader.decode(new BinaryBitmap(new HybridBinarizer(source))).getText()
+  } catch (cause: unknown) {
+    if (!(cause instanceof Error) || !['NotFoundException', 'ChecksumException', 'FormatException'].includes(cause.name)) {
+      throw cause
+    }
+    return reader.decode(new BinaryBitmap(new HybridBinarizer(source.invert()))).getText()
+  }
 }
 
 type DetectedBarcode = { rawValue: string }
@@ -46,12 +54,30 @@ const musicTracks = [
   { title: 'Komang', artist: 'Raim Laode', src: '/music/KOMANG.mp3' },
 ]
 
+const getRelationshipDuration = (now: Date) => {
+  const startYear = 2023
+  const startMonth = 11
+  const startDay = 6
+  let totalMonths = (now.getFullYear() - startYear) * 12 + now.getMonth() - startMonth
+
+  if (now.getDate() < startDay) totalMonths -= 1
+  totalMonths = Math.max(0, totalMonths)
+
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  const start = Date.UTC(startYear, startMonth, startDay)
+  const totalDays = Math.max(0, Math.floor((today - start) / 86_400_000))
+
+  return { years: Math.floor(totalMonths / 12), months: totalMonths, days: totalDays }
+}
+
 export default function Page() {
   const [opened, setOpened] = useState(false)
   const [unlocked, setUnlocked] = useState(false)
   const [error, setError] = useState('')
   const [scanStatus, setScanStatus] = useState('Membaca barcode kunci...')
   const [barcodeReady, setBarcodeReady] = useState(false)
+  const [pinEntryOpen, setPinEntryOpen] = useState(false)
+  const [enteredPin, setEnteredPin] = useState('')
   const [cameraStarting, setCameraStarting] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([])
@@ -60,6 +86,7 @@ export default function Page() {
   const [muted, setMuted] = useState(false)
   const [selectedTrack, setSelectedTrack] = useState(0)
   const [letterOpened, setLetterOpened] = useState(false)
+  const [relationshipDuration, setRelationshipDuration] = useState<ReturnType<typeof getRelationshipDuration> | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -97,7 +124,23 @@ export default function Page() {
   }, [muted])
 
   useEffect(() => {
-    if (!opened) return
+    let timer: number | undefined
+
+    const updateDuration = () => {
+      const now = new Date()
+      setRelationshipDuration(getRelationshipDuration(now))
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime()
+      timer = window.setTimeout(updateDuration, nextMidnight - now.getTime())
+    }
+
+    updateDuration()
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!opened || pinEntryOpen) return
 
     const reader = new Code128Reader()
     readerRef.current = reader
@@ -115,9 +158,22 @@ export default function Page() {
       if (videoRef.current) videoRef.current.srcObject = null
       readerRef.current = null
     }
-  }, [opened])
+  }, [opened, pinEntryOpen])
 
   const openEnvelope = () => setOpened(true)
+
+  const unlockWithPin = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (enteredPin !== ACCESS_PIN) {
+      setError('PIN salah. Coba lagi.')
+      return
+    }
+
+    stopScanner()
+    playSuccessSound()
+    setError('')
+    setUnlocked(true)
+  }
 
   const playSuccessSound = () => {
     if (typeof window === 'undefined') return
@@ -394,37 +450,76 @@ export default function Page() {
             <div className="pin-card" role="dialog" aria-labelledby="pin-title">
               <div className="pin-icon"><LockKeyhole size={21} /></div>
               <p className="eyebrow pin-eyebrow">ONE LITTLE SECRET</p>
-              <h2 id="pin-title">Pindai barcode kunci</h2>
-              <p className="pin-helper">Arahkan webcam ke barcode di HP lain atau cetakan. Kamera Mac tidak bisa memindai barcode yang tampil di layar Mac itu sendiri.</p>
-              <div className="scanner-frame">
-                <video className="scanner-video" ref={videoRef} muted playsInline aria-label="Tampilan kamera pemindai barcode" />
-                <div className="scanner-guide" aria-hidden="true" />
-              </div>
-              {cameraDevices.length > 1 && (
-                <label className="camera-picker">
-                  Kamera
-                  <select
-                    value={selectedCameraId}
-                    disabled={cameraStarting}
-                    onChange={(event) => {
-                      const cameraId = event.target.value
-                      stopScanner()
-                      setSelectedCameraId(cameraId)
-                      void startScanner(cameraId)
-                    }}
-                  >
-                    {cameraDevices.map((camera, index) => (
-                      <option value={camera.deviceId} key={camera.deviceId}>
-                        {camera.label || `Kamera ${index + 1}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              {pinEntryOpen ? (
+                <>
+                  <h2 id="pin-title">Masukkan PIN</h2>
+                  <p className="pin-helper">Masukkan PIN rahasia untuk membuka surat ini.</p>
+                  <form onSubmit={unlockWithPin}>
+                    <input
+                      aria-label="PIN rahasia"
+                      autoComplete="one-time-code"
+                      autoFocus
+                      inputMode="numeric"
+                      maxLength={6}
+                      onChange={(event) => {
+                        setEnteredPin(event.target.value.replace(/\D/g, '').slice(0, 6))
+                        setError('')
+                      }}
+                      pattern="[0-9]{6}"
+                      placeholder="••••••"
+                      required
+                      type="password"
+                      value={enteredPin}
+                    />
+                    <button className="gold-button scanner-button" type="submit">Buka surat</button>
+                  </form>
+                  <p className="scanner-status" id="pin-error" aria-live="polite">{error}</p>
+                  <button className="pin-alternative-button" type="button" onClick={() => {
+                    setEnteredPin('')
+                    setError('')
+                    setPinEntryOpen(false)
+                  }}>Kembali ke scan barcode</button>
+                </>
+              ) : (
+                <>
+                  <h2 id="pin-title">Pindai barcode kunci</h2>
+                  <p className="pin-helper">Arahkan webcam ke barcode di HP lain atau cetakan. Kamera Mac tidak bisa memindai barcode yang tampil di layar Mac itu sendiri.</p>
+                  <div className="scanner-frame">
+                    <video className="scanner-video" ref={videoRef} muted playsInline aria-label="Tampilan kamera pemindai barcode" />
+                    <div className="scanner-guide" aria-hidden="true" />
+                  </div>
+                  {cameraDevices.length > 1 && (
+                    <label className="camera-picker">
+                      Kamera
+                      <select
+                        value={selectedCameraId}
+                        disabled={cameraStarting}
+                        onChange={(event) => {
+                          const cameraId = event.target.value
+                          stopScanner()
+                          setSelectedCameraId(cameraId)
+                          void startScanner(cameraId)
+                        }}
+                      >
+                        {cameraDevices.map((camera, index) => (
+                          <option value={camera.deviceId} key={camera.deviceId}>
+                            {camera.label || `Kamera ${index + 1}`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <button className="gold-button scanner-button" type="button" onClick={() => scanning ? stopScanner() : void startScanner()} disabled={!barcodeReady || cameraStarting}>
+                    <Camera size={15} /> {cameraStarting ? 'Meminta izin kamera...' : scanning ? 'Hentikan pemindaian' : 'Mulai pindai barcode'}
+                  </button>
+                  <p className="scanner-status" id="pin-error" aria-live="polite">{error || scanStatus}</p>
+                  <button className="pin-alternative-button" type="button" onClick={() => {
+                    setEnteredPin('')
+                    setError('')
+                    setPinEntryOpen(true)
+                  }}>Masukkan PIN</button>
+                </>
               )}
-              <button className="gold-button scanner-button" type="button" onClick={() => scanning ? stopScanner() : void startScanner()} disabled={!barcodeReady || cameraStarting}>
-                <Camera size={15} /> {cameraStarting ? 'Meminta izin kamera...' : scanning ? 'Hentikan pemindaian' : 'Mulai pindai barcode'}
-              </button>
-              <p className="scanner-status" id="pin-error" aria-live="polite">{error || scanStatus}</p>
             </div>
           )}
           <p className="date-stamp">06 · 12 · 2026 <span>♡</span></p>
@@ -504,7 +599,11 @@ export default function Page() {
 
             <section className="counter-section reveal-on-scroll">
               <div className="counter-copy"><p className="section-kicker">AND THE COUNT GOES ON</p><h2>3 years of<br /><em>choosing you.</em></h2></div>
-              <div className="counter-grid"><div><strong>03</strong><span>YEARS</span></div><div><strong>36</strong><span>MONTHS</span></div><div><strong>1,095</strong><span>DAYS</span></div></div>
+              <div className="counter-grid">
+                <div><strong><span key={relationshipDuration?.years ?? 'loading'} className="counter-value">{relationshipDuration ? String(relationshipDuration.years).padStart(2, '0') : '--'}</span></strong><span>YEARS</span></div>
+                <div><strong><span key={relationshipDuration?.months ?? 'loading'} className="counter-value">{relationshipDuration?.months ?? '--'}</span></strong><span>MONTHS</span></div>
+                <div><strong><span key={relationshipDuration?.days ?? 'loading'} className="counter-value">{relationshipDuration ? relationshipDuration.days.toLocaleString('en-US') : '--'}</span></strong><span>DAYS</span></div>
+              </div>
             </section>
           </div>
           <footer className="site-footer"><Heart size={14} fill="currentColor" /> Made with all my love <span>♡</span></footer>
