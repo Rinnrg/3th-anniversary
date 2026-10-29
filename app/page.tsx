@@ -1,6 +1,6 @@
 'use client'
 
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BinaryBitmap, Code128Reader, HybridBinarizer, RGBLuminanceSource } from '@zxing/library'
 import { Camera, Heart, LockKeyhole, Music, Pause, Play, Volume2, VolumeX, Sparkles, ChevronDown } from 'lucide-react'
 import { AlbumCurtain3D } from '@/components/album-curtain-3d'
@@ -76,6 +76,52 @@ const getRelationshipDuration = (now: Date) => {
   return { years: Math.floor(totalMonths / 12), months: totalMonths, days: totalDays }
 }
 
+type CodeSlotsStatus = 'idle' | 'success' | 'error'
+
+function CodeSlots({ status, onChange, onComplete }: {
+  status: CodeSlotsStatus
+  onChange: () => void
+  onComplete: (code: string) => void
+}) {
+  const [code, setCode] = useState('')
+  const [focused, setFocused] = useState(false)
+
+  const updateCode = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 6)
+    setCode(digits)
+    onChange()
+    if (digits.length === 6) onComplete(digits)
+  }
+
+  return (
+    <div className={`code-slots code-slots-${status}`} data-focused={focused}>
+      <div className="code-slots-display" aria-hidden="true">
+        {Array.from({ length: 6 }, (_, index) => (
+          <span className="code-slot" key={index} style={{ animationDelay: `${index * 20}ms` }}>
+            {code[index] ?? (focused && index === code.length ? <span className="code-slot-caret" /> : '')}
+          </span>
+        ))}
+      </div>
+      <input
+        aria-label="PIN rahasia, 6 digit"
+        autoComplete="one-time-code"
+        autoFocus
+        className="code-slots-input"
+        inputMode="numeric"
+        maxLength={6}
+        onBlur={() => setFocused(false)}
+        onChange={(event) => updateCode(event.target.value)}
+        onFocus={() => setFocused(true)}
+        pattern="[0-9]{6}"
+        required
+        style={{ padding: 0, textAlign: 'left', letterSpacing: 'normal', font: 'inherit' }}
+        type="text"
+        value={code}
+      />
+    </div>
+  )
+}
+
 export default function Page() {
   const [opened, setOpened] = useState(false)
   const [unlocked, setUnlocked] = useState(false)
@@ -83,7 +129,7 @@ export default function Page() {
   const [scanStatus, setScanStatus] = useState('Membaca barcode kunci...')
   const [barcodeReady, setBarcodeReady] = useState(false)
   const [pinEntryOpen, setPinEntryOpen] = useState(false)
-  const [enteredPin, setEnteredPin] = useState('')
+  const [pinStatus, setPinStatus] = useState<CodeSlotsStatus>('idle')
   const [cameraStarting, setCameraStarting] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([])
@@ -169,13 +215,14 @@ export default function Page() {
 
   const openEnvelope = () => setOpened(true)
 
-  const unlockWithPin = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (enteredPin !== ACCESS_PIN) {
+  const unlockWithPin = (code: string) => {
+    if (code !== ACCESS_PIN) {
+      setPinStatus('error')
       setError('PIN salah. Coba lagi.')
       return
     }
 
+    setPinStatus('success')
     stopScanner()
     playSuccessSound()
     setError('')
@@ -461,28 +508,17 @@ export default function Page() {
                 <>
                   <h2 id="pin-title">Masukkan PIN</h2>
                   <p className="pin-helper">Masukkan PIN rahasia untuk membuka surat ini.</p>
-                  <form onSubmit={unlockWithPin}>
-                    <input
-                      aria-label="PIN rahasia"
-                      autoComplete="one-time-code"
-                      autoFocus
-                      inputMode="numeric"
-                      maxLength={6}
-                      onChange={(event) => {
-                        setEnteredPin(event.target.value.replace(/\D/g, '').slice(0, 6))
-                        setError('')
-                      }}
-                      pattern="[0-9]{6}"
-                      placeholder="••••••"
-                      required
-                      type="password"
-                      value={enteredPin}
-                    />
-                    <button className="gold-button scanner-button" type="submit">Buka surat</button>
-                  </form>
-                  <p className="scanner-status" id="pin-error" aria-live="polite">{error}</p>
+                  <CodeSlots
+                    status={pinStatus}
+                    onChange={() => {
+                      setPinStatus('idle')
+                      setError('')
+                    }}
+                    onComplete={unlockWithPin}
+                  />
+                  <p className={`scanner-status ${pinStatus === 'error' ? 'pin-status-error' : ''}`} id="pin-error" aria-live="polite">{error || (pinStatus === 'success' ? 'PIN benar.' : 'PIN terdiri dari 6 angka.')}</p>
                   <button className="pin-alternative-button" type="button" onClick={() => {
-                    setEnteredPin('')
+                    setPinStatus('idle')
                     setError('')
                     setPinEntryOpen(false)
                   }}>Kembali ke scan barcode</button>
@@ -521,7 +557,7 @@ export default function Page() {
                   </button>
                   <p className="scanner-status" id="pin-error" aria-live="polite">{error || scanStatus}</p>
                   <button className="pin-alternative-button" type="button" onClick={() => {
-                    setEnteredPin('')
+                    setPinStatus('idle')
                     setError('')
                     setPinEntryOpen(true)
                   }}>Masukkan PIN</button>
