@@ -3,6 +3,7 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { BinaryBitmap, Code128Reader, HybridBinarizer, RGBLuminanceSource } from '@zxing/library'
 import { Camera, Heart, LockKeyhole, Music, Pause, Play, Volume2, VolumeX, Sparkles, ChevronDown } from 'lucide-react'
+import { AlbumCurtain3D } from '@/components/album-curtain-3d'
 
 const BARCODE_KEY = '061223'
 const ACCESS_PIN = '061223'
@@ -49,6 +50,11 @@ const memories = [
   { src: 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=900&q=85', alt: 'Pasangan berbagi momen romantis', className: '' },
   { src: 'https://images.unsplash.com/photo-1494774157365-9e04c6720e47?auto=format&fit=crop&w=900&q=85', alt: 'Pasangan menikmati waktu bersama', className: 'memory-wide' },
 ]
+const albumPhotos = [
+  { src: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=900&q=85', alt: 'Berjalan bersama di bawah cahaya senja', caption: 'Under the same sky' },
+  { src: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=900&q=85', alt: 'Momen hangat berdua', caption: 'My favorite place' },
+]
+const albumCover = 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=1400&q=90'
 const musicTracks = [
   { title: 'Penjaga Hati', artist: 'Nadhif Basalamah', src: '/music/Penjaga%20Hati.mp3' },
   { title: 'Komang', artist: 'Raim Laode', src: '/music/KOMANG.mp3' },
@@ -86,6 +92,7 @@ export default function Page() {
   const [muted, setMuted] = useState(false)
   const [selectedTrack, setSelectedTrack] = useState(0)
   const [letterOpened, setLetterOpened] = useState(false)
+  const [albumRevealed, setAlbumRevealed] = useState(false)
   const [relationshipDuration, setRelationshipDuration] = useState<ReturnType<typeof getRelationshipDuration> | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -577,6 +584,45 @@ export default function Page() {
             <div className="memory-grid">
               {memories.map((memory, index) => <figure className={`memory-card reveal-on-scroll reveal-delay-${index + 1} ${memory.className}`} key={memory.src}><img src={memory.src} alt={memory.alt} /><figcaption>0{index + 1}</figcaption></figure>)}
             </div>
+
+            <section className="album-showcase reveal-on-scroll" aria-labelledby="album-showcase-title">
+              <div className="album-showcase-heading">
+                <p className="section-kicker"> ALBUM SHOWCASE</p>
+                <h2 id="album-showcase-title">Moon <em>&amp;</em> Star</h2>
+                <p>Dua cerita kecil, dan satu kenangan yang kusimpan paling dalam.</p>
+              </div>
+              <div className="album-preview-grid">
+                {albumPhotos.map((photo, index) => (
+                  <figure className={`album-preview album-preview-${index + 1}`} key={photo.caption}>
+                    <img src={photo.src} alt={photo.alt} />
+                    <figcaption><span>0{index + 1}</span>{photo.caption}</figcaption>
+                  </figure>
+                ))}
+              </div>
+              <div className={`album-cover-stage ${albumRevealed ? 'is-revealed' : ''}`}>
+                <img
+                  className="album-cover-image"
+                  src={albumCover}
+                  alt={albumRevealed ? 'Foto utama album Moon & Star' : ''}
+                  aria-hidden={!albumRevealed}
+                />
+                <AlbumCurtain3D revealed={albumRevealed} />
+                {!albumRevealed && (
+                  <button
+                    className="album-reveal-button"
+                    type="button"
+                    onClick={() => setAlbumRevealed(true)}
+                    aria-label="Jatuhkan tirai dan buka foto utama album Moon & Star"
+                    aria-expanded={albumRevealed}
+                  >
+                    <span>OUR MAIN MEMORY</span>
+                    <strong>Sentuh untuk membuka</strong>
+                    <Heart size={20} aria-hidden="true" />
+                  </button>
+                )}
+                {albumRevealed && <p className="album-cover-caption">The moment I want to keep forever</p>}
+              </div>
+            </section>
 
             <section className="letter-section reveal-on-scroll">
               <div className="letter-label"><span className="line" /> A LETTER FOR YOU</div>
