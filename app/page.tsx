@@ -51,8 +51,8 @@ const memories = [
   { src: 'https://images.unsplash.com/photo-1494774157365-9e04c6720e47?auto=format&fit=crop&w=900&q=85', alt: 'Pasangan menikmati waktu bersama', className: 'memory-wide' },
 ]
 const albumPhotos = [
-  { src: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=900&q=85', alt: 'Berjalan bersama di bawah cahaya senja', caption: 'Under the same sky' },
-  { src: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=900&q=85', alt: 'Momen hangat berdua', caption: 'My favorite place' },
+  { src: '/album/album%20m%26s%201.webp', alt: 'Foto pertama album Moon & Star', caption: 'Cloud & Chromatics' },
+  { src: '/album/album%20m%26s%202.webp', alt: 'Foto kedua album Moon & Star', caption: 'Fluttering Tides' },
 ]
 const albumCover = 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?auto=format&fit=crop&w=1400&q=90'
 const musicTracks = [
